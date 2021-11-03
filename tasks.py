@@ -3,7 +3,6 @@ import logging
 from typing import List
 from time import sleep
 from configparser import ConfigParser
-from functools import wraps
 
 import pandas as pd
 from RPA.Browser.Selenium import Selenium
@@ -215,5 +214,4 @@ def main():
 if __name__ == "__main__":
     logging.basicConfig(format=u'%(filename)s [LINE:%(lineno)d] #%(levelname)-8s [%(asctime)s]  %(message)s',
                     level=logging.INFO)
-    log = logging.getLogger(__name__)
     main()
