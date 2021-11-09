@@ -88,7 +88,7 @@ class Robot:
             
             seconds += 1
 
-    def write_investments_to_excel(self, table):
+    def write_investments_to_excel(self, table) -> List[pd.DataFrame]:
         """Writes investments table to the second excel sheet by converting html to pandas dataframe"""
 
         pd_df = pd.read_html(table.get_attribute("outerHTML"))
@@ -99,6 +99,7 @@ class Robot:
         writer.book = wb
         pd_df[0].to_excel(writer, sheet_name="Individual Investments", index=False)
         writer.save()
+        return pd_df
 
     def get_agencies(self) -> list:
         """Loads all the agencies and returns list of them"""
@@ -153,34 +154,38 @@ class Robot:
         uii = data_list[1].split('Section')[0].strip()
 
         logging.disable(logging.DEBUG)  # Enable logging back
-        return {'Name': name, 'UII': uii}
+        return {'Name': name, 'UII': uii}        
 
-    def get_data_from_table(self):
-        """Generator which returns Inv Name and UII from each row"""
-
-        lib = Files()
-        lib.open_workbook(f'./output/{self.filename}')
-        data = lib.read_worksheet("Individual Investments")
-
-        # Gets accurate letter of required columns 
-        name_letter = [l for l in data[0] if data[0][l] == 'Investment Title'][0]
-        uii_letter = [l for l in data[0] if data[0][l] == 'UII'][0]
-        for row in data[1:]:
-            yield {'Name': row[name_letter], 'UII': row[uii_letter]}
-        
-
-    def compare_data(self):
+    def compare_data(self, table: List[pd.DataFrame]):
         """Comparing data from each pdf and table of certain agency"""
+        
+        table_dict = table[0].loc[:, ['UII', 'Investment Title']].to_dict()
+        UIIs = tuple(table_dict['UII'].values())
+        names = tuple(table_dict['Investment Title'].values())
 
         for pdf_name in self.pdf_files:
+            logging.info(f"Start comparing data for '{pdf_name}'")
             pdf_data = self.get_data_from_pdf(pdf_name)
             name_from_pdf = pdf_data['Name']
             uii_from_pdf = pdf_data['UII']
-            logging.info(f"Starting comparing data on file {pdf_name}.")
-            for i, data_dict in enumerate(self.get_data_from_table()):
-                name, uii = data_dict['Name'], data_dict['UII']
-                if name == name_from_pdf and uii == uii_from_pdf:
-                    logging.info(f"MATCH FOUND ON ROW {i+1}")
+
+            # Checks if required UII is in table and compare whether title is similar as in pdf
+            if uii_from_pdf in UIIs:
+                ind = UIIs.index(uii_from_pdf)
+                if names[ind] == name_from_pdf:
+                    logging.info(f"Both UII and Title are matched on row {ind+1}")
+                    continue
+                else:
+                    logging.warn(f"Title doesn't match UII on row {ind+1}")
+            
+            if name_from_pdf in names:
+                ind = names.index(name_from_pdf)
+                if UIIs[ind] == uii_from_pdf:
+                    logging.info(f"Title and UII are matched on row {ind+1}")
+                else:
+                    logging.warn(f"UII doesn't match Title on row {ind+1}")
+                    logging.warn(f"Matches aren't founded for '{pdf_name}'")
+            
             
 
 def main():
@@ -202,11 +207,11 @@ def main():
         robot.write_agencies_to_excel(agencies)  # Writes name, spending to excel
 
         table = robot.process_single_agency(agencies, agency)
-        robot.write_investments_to_excel(table)  # Writes Investment table to the same excel
-        
+        table_df = robot.write_investments_to_excel(table)  # Writes Investment table to the same excel
+
         robot.browser_lib.set_download_directory(f"{os.path.abspath(os.getcwd())}/output/", download_pdf=True) 
         robot.get_pdfs(table)  # Download PDFs of asked agency
-        robot.compare_data()  # Compare data from pdf and excel
+        robot.compare_data(table_df)  # Compare data from pdf and excel
     finally:
         robot.browser_lib.close_all_browsers()
 
